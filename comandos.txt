@@ -1,0 +1,24 @@
+mkdir docs
+cd docs
+mkdir textos
+mkdir imagens
+cd textos
+import /etc/hostname hostname.txt
+import /etc/hosts hosts.txt
+ls
+cat hostname.txt
+cd ..
+rename imagens fotos
+ls
+cd ..
+mkdir teste
+mv docs teste
+ls
+cd teste
+ls
+cd docs
+cd textos
+rm hostname.txt
+rm hosts.txt
+cd ..
+rmdir textos
