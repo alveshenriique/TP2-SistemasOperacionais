@@ -1,0 +1,40 @@
+# Script para criar a estrutura de diretórios e o arquivo de integrantes
+
+# Cria a primeira pasta na raiz
+mkdir UFV
+
+# Entra na pasta UFV
+cd UFV
+
+# Cria a subpasta
+mkdir SistemasOperacionais
+
+# Entra na subpasta
+cd SistemasOperacionais
+
+# Cria as pastas dos trabalhos
+mkdir TP0
+mkdir TP1
+mkdir TP2
+
+# Entra na pasta do TP2 para criar o arquivo
+cd TP2
+
+# Cria o arquivo 'Integrantes' e escreve a primeira linha (usando >)
+echo "Kayo Gregore - 4224" > Integrantes
+
+# Anexa as linhas seguintes ao arquivo (usando >>)
+echo "Fabiano Lara - 4227 " >> Integrantes
+echo "Juan Pablo - 4229" >> Integrantes
+echo "Henrique Alves - 4231" >> Integrantes
+echo "Murillo Santhiago - 4243" >> Integrantes
+
+# Comandos de verificação para vermos o resultado no final da execução
+echo ""
+echo "--- Verificando a criação ---"
+ls
+echo "--- Conteúdo do arquivo 'Integrantes' ---"
+cat Integrantes
+
+# Fim do script
+exit
