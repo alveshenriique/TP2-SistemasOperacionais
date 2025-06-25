@@ -1,137 +1,115 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "commands.h"
-#include "fs_core.h"
-#include "fs_types.h"
+// src/commands.c
 
-void cmd_mkdir(const char *nome) {
-    Node* atual = fs_get_atual();
-    if (fs_buscar_no_dir(atual, nome)) {
-        printf(COLOR_ERROR "Erro: Item '%s' já existe.\n" COLOR_RESET, nome);
-        return;
+#include <stdio.h>
+#include "commands.h"
+#include "fs_types.h" 
+#include "fs_core.h"
+#include <string.h>
+
+/*
+ * =================================================================
+ * NOTA IMPORTANTE:
+ *
+ * Todas as funções de comando abaixo foram intencionalmente
+ * esvaziadas. A lógica antiga baseada em memória (struct Node)
+ * não é mais compatível com o novo sistema baseado em disco
+ * (struct Inode).
+ *
+ * Nos próximos passos, recriaremos a lógica de cada comando,
+ * um a um, para que operem no disco. Por enquanto, elas
+ * apenas informam que não estão implementadas.
+ * =================================================================
+ */
+
+ void cmd_mkdir(const char* nome_dir) {
+    if (fs_create_directory(nome_dir) == 0) {
+        printf("Diretório '%s' criado com sucesso.\n", nome_dir);
+    } else {
+        // A função fs_create_directory já imprime uma mensagem de erro detalhada
     }
-    if (atual->qtd_filhos >= MAX_ARQUIVOS) {
-        printf(COLOR_ERROR "Erro: Limite de arquivos/diretórios atingido neste diretório.\n" COLOR_RESET);
-        return;
-    }
-    Node *n = fs_criar_node(nome, DIRETORIO, atual);
-    fs_adicionar_filho(atual, n);
-    printf(COLOR_SUCCESS "Diretório '%s' criado com sucesso.\n" COLOR_RESET, nome);
 }
 
 void cmd_ls() {
-    Node* atual = fs_get_atual();
-    printf(COLOR_INFO "Conteúdo de '%s':\n" COLOR_RESET, atual->nome);
-    for (int i = 0; i < atual->qtd_filhos; i++) {
-        printf("<%s>\t%s\n", atual->filhos[i]->tipo == DIRETORIO ? "DIR " : "FILE", atual->filhos[i]->nome);
+    fs_list_directory();
+}
+
+void cmd_cd(const char* nome_dir) {
+    if (fs_change_directory(nome_dir) != 0) {
+        // A função do core já imprime o erro detalhado
     }
 }
 
-void cmd_cd(const char *nome) {
-    if (strcmp(nome, "..") == 0) {
-        Node* pai = fs_get_atual()->pai;
-        if (pai) {
-            fs_set_atual(pai);
-        } else {
-            printf(COLOR_ERROR "Erro: Já está no diretório raiz.\n" COLOR_RESET);
-        }
-        return;
+void cmd_import(const char* caminho_real, const char* nome_dest) {
+    if (fs_import_file(caminho_real, nome_dest) == 0) {
+        printf("Arquivo '%s' importado com sucesso para '%s'.\n", caminho_real, nome_dest);
     }
-    Node* dest = fs_buscar_no_dir(fs_get_atual(), nome);
-    if (dest && dest->tipo == DIRETORIO) {
-        fs_set_atual(dest);
+    // A função do core já imprime a mensagem de erro específica
+}
+
+void cmd_cat(const char* nome_arq) {
+    if (fs_read_file(nome_arq) != 0) {
+        // A função do core já imprime a mensagem de erro específica
+    }
+}
+
+void cmd_rename(const char* nome_antigo, const char* nome_novo) {
+    if (fs_rename(nome_antigo, nome_novo) == 0) {
+        printf("Item '%s' renomeado para '%s' com sucesso.\n", nome_antigo, nome_novo);
+    }
+    // A função do core já imprime a mensagem de erro específica
+}
+
+void cmd_mv(const char* nome_origem, const char* nome_destino) {
+    if (fs_move_item(nome_origem, nome_destino) == 0) {
+        printf("'%s' movido para '%s' com sucesso.\n", nome_origem, nome_destino);
+    }
+    // A função do core já imprime a mensagem de erro específica
+}
+
+void cmd_rm(const char* nome_arq) {
+    if (fs_remove_file(nome_arq) == 0) {
+        printf("Arquivo '%s' removido com sucesso.\n", nome_arq);
+    }
+    // A função do core já imprime a mensagem de erro específica
+}
+
+void cmd_rmdir(const char* nome_dir) {
+    if (fs_remove_directory(nome_dir) == 0) {
+        printf("Diretório '%s' removido com sucesso.\n", nome_dir);
+    }
+    // A função do core já imprime a mensagem de erro específica
+}
+
+void cmd_stat(const char* name) {
+    if (fs_stat_item(name) != 0) {
+        // A função do core já imprime a mensagem de erro específica
+    }
+}
+
+void cmd_df() {
+    if (fs_disk_free() != 0) {
+        // A função do core já imprime a mensagem de erro
+    }
+}
+
+void cmd_echo(const char* text, const char* op, const char* filename) {
+    if (fs_write_file(filename, text, op) != 0) {
+        // Erro já foi impresso pelo core
     } else {
-        printf(COLOR_ERROR "Erro: Diretório '%s' não encontrado.\n" COLOR_RESET, nome);
+        printf("Texto escrito em '%s' com sucesso.\n", filename);
     }
 }
 
-void cmd_import(const char *caminho_real, const char *nome_dest) {
-    Node* atual = fs_get_atual();
-    if (fs_buscar_no_dir(atual, nome_dest)) {
-        printf(COLOR_ERROR "Erro: Item '%s' já existe.\n" COLOR_RESET, nome_dest);
-        return;
-    }
-    FILE *fp = fopen(caminho_real, "r");
-    if (!fp) {
-        printf(COLOR_ERROR "Erro ao abrir arquivo real: '%s'.\n" COLOR_RESET, caminho_real);
-        return;
-    }
-    Node *n = fs_criar_node(nome_dest, ARQUIVO, atual);
-    size_t bytes_lidos = fread(n->conteudo, 1, MAX_CONTEUDO - 1, fp);
-    n->conteudo[bytes_lidos] = '\0';
-    fclose(fp);
-    fs_adicionar_filho(atual, n);
-    printf(COLOR_SUCCESS "Arquivo '%s' importado (%zu bytes).\n" COLOR_RESET, nome_dest, strlen(n->conteudo));
-}
-
-void cmd_cat(const char *nome) {
-    Node *n = fs_buscar_no_dir(fs_get_atual(), nome);
-    if (!n || n->tipo != ARQUIVO) {
-        printf(COLOR_ERROR "Erro: Arquivo '%s' não encontrado.\n" COLOR_RESET, nome);
-        return;
-    }
-    n->acessado = time(NULL);
-    printf("%s\n", n->conteudo);
-}
-
-void cmd_rename(const char *orig, const char *novo) {
-    Node *n = fs_buscar_no_dir(fs_get_atual(), orig);
-    if (!n) {
-        printf(COLOR_ERROR "Erro: Item '%s' não encontrado.\n" COLOR_RESET, orig);
-        return;
-    }
-    if (fs_buscar_no_dir(fs_get_atual(), novo)) {
-        printf(COLOR_ERROR "Erro: Já existe um item com o nome '%s'.\n" COLOR_RESET, novo);
-        return;
-    }
-    strncpy(n->nome, novo, MAX_NOME - 1);
-    n->nome[MAX_NOME - 1] = '\0';
-    n->modificado = time(NULL);
-    printf(COLOR_SUCCESS "Item '%s' renomeado para '%s'.\n" COLOR_RESET, orig, novo);
-}
-
-void cmd_mv(const char *nome, const char *dest_dir_nome) {
-    Node* atual = fs_get_atual();
-    Node* item_mover = fs_buscar_no_dir(atual, nome);
-    if (!item_mover) {
-        printf(COLOR_ERROR "Erro: Item a ser movido ('%s') não encontrado.\n" COLOR_RESET, nome);
-        return;
-    }
-    Node* dest_dir = fs_buscar_no_dir(atual, dest_dir_nome);
-    if (!dest_dir || dest_dir->tipo != DIRETORIO) {
-        printf(COLOR_ERROR "Erro: Diretório de destino ('%s') não encontrado.\n" COLOR_RESET, dest_dir_nome);
-        return;
-    }
-    if (fs_remover_filho(atual, nome) == 0) {
-        fs_adicionar_filho(dest_dir, item_mover);
-        item_mover->pai = dest_dir;
-        printf(COLOR_SUCCESS "'%s' movido para '%s'.\n" COLOR_RESET, nome, dest_dir_nome);
-    }
-}
-
-void cmd_rm(const char *nome) {
-    Node* item = fs_buscar_no_dir(fs_get_atual(), nome);
-    if (!item || item->tipo != ARQUIVO) {
-        printf(COLOR_ERROR "Erro: Arquivo '%s' não encontrado.\n" COLOR_RESET, nome);
-        return;
-    }
-    if (fs_remover_filho(fs_get_atual(), nome) == 0) {
-        printf(COLOR_SUCCESS "Arquivo '%s' removido.\n" COLOR_RESET, nome);
-    }
-}
-
-void cmd_rmdir(const char *nome) {
-    Node* item = fs_buscar_no_dir(fs_get_atual(), nome);
-    if (!item || item->tipo != DIRETORIO) {
-        printf(COLOR_ERROR "Erro: Diretório '%s' não encontrado.\n" COLOR_RESET, nome);
-        return;
-    }
-    if (item->qtd_filhos > 0) {
-        printf(COLOR_ERROR "Erro: O diretório '%s' não está vazio.\n" COLOR_RESET, nome);
-        return;
-    }
-    if (fs_remover_filho(fs_get_atual(), nome) == 0) {
-        printf(COLOR_SUCCESS "Diretório '%s' removido.\n" COLOR_RESET, nome);
+void cmd_set(const char* param, const char* value) {
+    if (strcmp(param, "verbose") == 0) {
+        if (strcmp(value, "on") == 0) {
+            fs_set_verbose(1);
+        } else if (strcmp(value, "off") == 0) {
+            fs_set_verbose(0);
+        } else {
+            printf("Uso: set verbose <on|off>\n");
+        }
+    } else {
+        printf("Parâmetro desconhecido: %s\n", param);
     }
 }
