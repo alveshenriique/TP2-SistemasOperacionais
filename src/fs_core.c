@@ -10,7 +10,7 @@
 // --- Variáveis Globais ---
 static FILE* disk_file = NULL;
 static Superblock sb;
-static uint32_t current_inode_num = 0;
+uint32_t current_inode_num = 0;
 static int verbose_mode = 0;
 
 // --- Funções Auxiliares de Impressão ---
@@ -223,40 +223,57 @@ static int remove_entry_from_directory(Inode* parent_inode, uint32_t parent_inod
 
 // --- Funções Principais ---
 
-int fs_list_directory() {
+Inode fs_list_inode() {
     verbose_printf("Iniciando 'ls' no i-node nº %u\n", current_inode_num);
     Inode current_inode;
-    if (inode_read(current_inode_num, &current_inode) != 0) {
-        fprintf(stderr, "Erro ao ler o i-node do diretório atual.\n");
-        return -1;
+    if (inode_read(current_inode_num, &current_inode) != 0 || current_inode.type != TYPE_DIR) {
+        Inode empty = {0};
+        return empty;
     }
-    if (current_inode.type != TYPE_DIR) {
-        fprintf(stderr, "Erro: O i-node atual não é um diretório.\n");
-        return -1;
-    }
-    printf("Conteúdo do diretório (inode %u):\n", current_inode_num);
-    printf("Tipo\t\tNome\n");
-    printf("----\t\t----\n");
+    return current_inode;
+}
+
+FileList fs_list_directory() {
+    verbose_printf("Iniciando 'ls' no i-node nº %u\n", current_inode_num);
+    Inode current_inode = fs_list_inode();
     char block_buffer[sb.block_size];
-    for (int i = 0; i < INODE_DIRECT_BLOCKS; ++i) {
+    FileList file_list = {0};
+    int num_blocks = (current_inode.size + sb.block_size - 1) / sb.block_size;
+    for (int i = 0; i < num_blocks; ++i) {
         uint32_t block_num = current_inode.direct_blocks[i];
         if (block_num == 0) continue;
         if (block_read(block_num, block_buffer) != 0) {
             fprintf(stderr, "Erro ao ler o bloco de dados do diretório.\n");
-            return -1;
+            free(file_list.entries);
+            file_list.entries = NULL;
+            file_list.count = 0;
+            return file_list;
         }
         DirectoryEntry* entry = (DirectoryEntry*) block_buffer;
         int num_entries_per_block = sb.block_size / sizeof(DirectoryEntry);
+
         for (int j = 0; j < num_entries_per_block; ++j) {
             if (strlen(entry[j].name) > 0) {
                 Inode entry_inode;
                 if(inode_read(entry[j].inode_num, &entry_inode) == 0) {
-                    printf("<%s>\t\t%s\n", entry_inode.type == TYPE_DIR ? "DIR" : "FILE", entry[j].name);
+                    FileEntry *tmp = realloc(file_list.entries, (file_list.count + 1) * sizeof(FileEntry));
+                    if (!tmp) {
+                        fprintf(stderr, "Erro de alocação de memória\n");
+                        free(file_list.entries);
+                        file_list.entries = NULL;
+                        file_list.count = 0;
+                        return file_list;
+                    }
+                    file_list.entries = tmp;
+                    strncpy(file_list.entries[file_list.count].name, entry[j].name, MAX_FILENAME_LEN);
+                    file_list.entries[file_list.count].name[MAX_FILENAME_LEN-1] = '\0';
+                    file_list.entries[file_list.count].type = entry_inode.type;
+                    file_list.count++;
                 }
             }
         }
     }
-    return 0;
+    return file_list;
 }
 
 int fs_create_directory(const char* name) {
@@ -519,6 +536,42 @@ int fs_remove_file(const char* filename) {
     return 0;
 }
 
+int fs_delete(const char* name) {
+    Inode parent_inode;
+    if (inode_read(current_inode_num, &parent_inode) != 0) return -1;
+
+    int target_inode_num = find_in_directory(&parent_inode, name);
+    if (target_inode_num == -1) {
+        fprintf(stderr, "Erro: Item '%s' não encontrado.\n", name);
+        return -1;
+    }
+
+    Inode target_inode;
+    if (inode_read(target_inode_num, &target_inode) != 0) return -1;
+
+    if (target_inode.type == TYPE_FILE) {
+        return fs_remove_file(name);
+    } else if (target_inode.type == TYPE_DIR) {
+        if (fs_change_directory(name) != 0) return -1;
+
+        FileList contents = fs_list_directory();
+        for (size_t i = 0; i < contents.count; ++i) {
+            if (strcmp(contents.entries[i].name, ".") == 0 || strcmp(contents.entries[i].name, "..") == 0)
+                continue;
+
+            fs_delete(contents.entries[i].name);
+        }
+        free(contents.entries);
+
+        // Volta para o diretório original, não só para ".."
+        fs_change_directory("..");
+
+        return fs_remove_directory(name);
+    }
+
+    return -1;
+}
+
 int fs_rename(const char* old_name, const char* new_name) {
     verbose_printf("Iniciando 'rename %s' para '%s'.\n", old_name, new_name);
     if (strcmp(old_name, ".") == 0 || strcmp(old_name, "..") == 0 || strcmp(new_name, ".") == 0 || strcmp(new_name, "..") == 0) {
@@ -565,66 +618,58 @@ int fs_rename(const char* old_name, const char* new_name) {
     return -1;
 }
 
-int fs_stat_item(const char* name) {
+Inode fs_stat_item(const char* name) {
     verbose_printf("Iniciando 'stat %s'.\n", name);
     Inode parent_inode;
-    if (inode_read(current_inode_num, &parent_inode) != 0) return -1;
+    if (inode_read(current_inode_num, &parent_inode) != 0) return (Inode){0};
     int target_inode_num = find_in_directory(&parent_inode, name);
     if (target_inode_num == -1) {
-        fprintf(stderr, "Erro: Item '%s' não encontrado.\n", name);
-        return -1;
+        return (Inode){0}; // Retorna um i-node vazio se não encontrado
     }
     Inode target_inode;
-    if (inode_read(target_inode_num, &target_inode) != 0) return -1;
-    printf("Estatísticas para: '%s'\n", name);
-    printf("----------------------------------\n");
-    printf("  I-node........: %d\n", target_inode_num);
-    printf("  Tipo..........: %s\n", (target_inode.type == TYPE_DIR) ? "Diretório" : "Arquivo");
-    printf("  Links.........: %u\n", target_inode.link_count);
-    printf("  Tamanho.......: %u bytes\n", target_inode.size);
-    char time_buffer[26];
-    ctime_r(&target_inode.created, time_buffer);
-    time_buffer[strlen(time_buffer) - 1] = '\0';
-    printf("  Criado em.....: %s\n", time_buffer);
-    ctime_r(&target_inode.accessed, time_buffer);
-    time_buffer[strlen(time_buffer) - 1] = '\0';
-    printf("  Acessado em...: %s\n", time_buffer);
-    ctime_r(&target_inode.modified, time_buffer);
-    time_buffer[strlen(time_buffer) - 1] = '\0';
-    printf("  Modificado em.: %s\n", time_buffer);
-    printf("  Blocos de Dados: [ ");
-    for (int i = 0; i < INODE_DIRECT_BLOCKS; ++i) {
-        if (target_inode.direct_blocks[i] != 0) {
-            printf("%u ", target_inode.direct_blocks[i]);
-        }
-    }
-    printf("]\n");
-    return 0;
+    if (inode_read(target_inode_num, &target_inode) != 0) return (Inode){0};
+    return target_inode;
 }
 
-int fs_disk_free() {
+DiskUsageInfo fs_disk_free() {
     verbose_printf("Iniciando 'df'.\n");
     uint32_t used_inodes = count_set_bits(sb.inode_bitmap_start, sb.total_inodes);
     uint32_t used_blocks = count_set_bits(sb.block_bitmap_start, sb.total_blocks);
     if (used_inodes == (uint32_t)-1 || used_blocks == (uint32_t)-1) {
         fprintf(stderr, "Erro ao ler bitmaps do disco.\n");
-        return -1;
+        return (DiskUsageInfo){0};
     }
     uint32_t free_inodes = sb.total_inodes - used_inodes;
     uint32_t free_blocks = sb.total_blocks - used_blocks;
     uint32_t total_kb = (sb.total_blocks * sb.block_size) / 1024;
     uint32_t used_kb = (used_blocks * sb.block_size) / 1024;
     uint32_t free_kb = (free_blocks * sb.block_size) / 1024;
-    printf("Visão Geral do Sistema de Arquivos\n");
-    printf("----------------------------------------------------------\n");
-    printf("Recurso      |         Total |          Usado |          Livre\n");
-    printf("----------------------------------------------------------\n");
-    printf("I-nodes      | %13u | %12u | %12u\n", sb.total_inodes, used_inodes, free_inodes);
-    printf("Blocos       | %13u | %12u | %12u\n", sb.total_blocks, used_blocks, free_blocks);
-    printf("Espaço (KB)  | %13u | %12u | %12u\n", total_kb, used_kb, free_kb);
-    printf("----------------------------------------------------------\n");
-    return 0;
+    return (DiskUsageInfo){
+        .total_inodes = sb.total_inodes,
+        .used_inodes = used_inodes,
+        .free_inodes = free_inodes,
+        .total_blocks = sb.total_blocks,
+        .used_blocks = used_blocks,
+        .free_blocks = free_blocks,
+        .total_kb = total_kb,
+        .used_kb = used_kb,
+        .free_kb = free_kb
+    };
+
 }
+
+int fs_check_item_type(const char* name) {
+    Inode parent_inode;
+    if (inode_read(current_inode_num, &parent_inode) != 0) return -1;
+    int target_inode_num = find_in_directory(&parent_inode, name);
+    if (target_inode_num == -1) return -1;
+    
+    Inode target_inode;
+    if (inode_read(target_inode_num, &target_inode) != 0) return -1;
+    
+    return target_inode.type;
+}
+
 
 int fs_write_file(const char* filename, const char* text, const char* op) {
     verbose_printf("Iniciando 'echo' para o arquivo '%s' (operação: %s)\n", filename, op);
@@ -758,47 +803,69 @@ int fs_move_item(const char* source_name, const char* dest_dir_name) {
     return 0;
 }
 
-int fs_read_file(const char* filename) {
+char* fs_read_file(const char* filename) {
     verbose_printf("Iniciando 'cat %s'.\n", filename);
+
     Inode parent_inode;
-    if (inode_read(current_inode_num, &parent_inode) != 0) return -1;
+    if (inode_read(current_inode_num, &parent_inode) != 0) return NULL;
+
     int target_inode_num = find_in_directory(&parent_inode, filename);
     if (target_inode_num == -1) {
         fprintf(stderr, "Erro: Arquivo '%s' não encontrado.\n", filename);
-        return -1;
+        return NULL;
     }
+
     Inode target_inode;
-    if (inode_read(target_inode_num, &target_inode) != 0) return -1;
+    if (inode_read(target_inode_num, &target_inode) != 0) return NULL;
+
     if (target_inode.type != TYPE_FILE) {
         fprintf(stderr, "Erro: '%s' não é um arquivo.\n", filename);
-        return -1;
+        return NULL;
     }
+
     verbose_printf("Lendo %u bytes do arquivo (i-node %d).\n", target_inode.size, target_inode_num);
+
+    if (target_inode.size == 0) {
+        // Arquivo vazio, retorna string vazia alocada
+        char* empty = malloc(1);
+        if (empty) empty[0] = '\0';
+        return empty;
+    }
+
+    char* content = malloc(target_inode.size + 1); // +1 para o '\0'
+    if (!content) {
+        fprintf(stderr, "Erro de alocação de memória.\n");
+        return NULL;
+    }
+
     char block_buffer[sb.block_size];
     long bytes_left_to_read = target_inode.size;
+    size_t offset = 0;
+
     for (int i = 0; i < INODE_DIRECT_BLOCKS; ++i) {
         uint32_t block_num = target_inode.direct_blocks[i];
         if (block_num == 0 || bytes_left_to_read == 0) break;
+
         if (block_read(block_num, block_buffer) != 0) {
             fprintf(stderr, "Erro ao ler bloco de dados do arquivo.\n");
-            return -1;
+            free(content);
+            return NULL;
         }
-        size_t bytes_to_print = (bytes_left_to_read > sb.block_size) ? sb.block_size : bytes_left_to_read;
-        verbose_printf(" -> Imprimindo %zu bytes do bloco de dados %u.\n", bytes_to_print, block_num);
-        fwrite(block_buffer, 1, bytes_to_print, stdout);
-        bytes_left_to_read -= bytes_to_print;
+
+        size_t bytes_to_copy = (bytes_left_to_read > sb.block_size) ? sb.block_size : bytes_left_to_read;
+        memcpy(content + offset, block_buffer, bytes_to_copy);
+
+        offset += bytes_to_copy;
+        bytes_left_to_read -= bytes_to_copy;
     }
+
+    content[target_inode.size] = '\0'; // Garantir terminação nula
+
     verbose_printf("Atualizando timestamp de acesso do i-node %d.\n", target_inode_num);
     target_inode.accessed = time(NULL);
     inode_write(target_inode_num, &target_inode);
-    if (target_inode.size > 0) {
-        fseek(disk_file, -1, SEEK_END);
-        char last_char;
-        if(fread(&last_char, 1, 1, disk_file) == 1 && last_char != '\n') {
-             printf("\n");
-        }
-    }
-    return 0;
+
+    return content;
 }
 
 void fs_set_verbose(int mode) {

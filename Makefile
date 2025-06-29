@@ -1,13 +1,15 @@
 # Compilador
 CC=gcc
 # Flags de compilação: -g para debug, -Wall para warnings
-CFLAGS=-g -Wall
+CFLAGS=-g -Wall -Iinclude
 # Diretório dos includes
 IDIR=include
 # Diretório do código fonte
 SDIR=src
 # Nome do executável final
 TARGET=simulador
+# Flags do GTK (detectadas automaticamente)
+GTK_FLAGS=`pkg-config --cflags --libs gtk+-3.0`
 
 # Encontra todos os arquivos .c no diretório src
 SOURCES=$(wildcard $(SDIR)/*.c)
@@ -18,12 +20,11 @@ OBJECTS=$(SOURCES:.c=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJECTS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(GTK_FLAGS)
 
 # Regra para compilar arquivos .c em .o
-# A flag -I$(IDIR) diz ao compilador para procurar arquivos de cabeçalho na pasta 'include'
 %.o: %.c
-	$(CC) $(CFLAGS) -I$(IDIR) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(IDIR) $(GTK_FLAGS) -c $< -o $@
 
 # Regra para limpar os arquivos gerados
 clean:

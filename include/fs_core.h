@@ -15,21 +15,23 @@ int fs_mount(const char* path);
 void fs_unmount();
 
 
-int fs_list_directory();
+FileList fs_list_directory();
+Inode fs_list_inode();
 int fs_create_directory(const char* name);
 int fs_change_directory(const char* name);
 void fs_get_current_path(char* path_buffer, size_t buffer_size);
 int fs_remove_directory(const char* name);
 int fs_import_file(const char* source_path, const char* dest_name);
-int fs_read_file(const char* filename);
+char* fs_read_file(const char* filename);
 int fs_remove_file(const char* filename);
 int fs_rename(const char* old_name, const char* new_name);
 int fs_move_item(const char* source_name, const char* dest_dir_name);
+int fs_delete(const char* name);
 void fs_set_verbose(int mode);
 //Extras
-int fs_stat_item(const char* name);
-int fs_disk_free();
+Inode fs_stat_item(const char* name);
+DiskUsageInfo fs_disk_free();
 int fs_write_file(const char* filename, const char* text, const char* op);
-
-
+extern uint32_t current_inode_num;
+int fs_check_item_type(const char* name);
 #endif // FS_CORE_H

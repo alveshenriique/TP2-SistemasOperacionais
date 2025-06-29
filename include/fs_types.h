@@ -45,10 +45,32 @@ typedef struct {
     // Ponteiros indiretos podem ser adicionados aqui futuramente
 } Inode;
 
+typedef struct {
+    char name[MAX_FILENAME_LEN];
+    InodeType type; // Tipo do item (arquivo ou diretório)
+} FileEntry;
+
+typedef struct {
+    FileEntry* entries; // Array de entradas de arquivos/diretórios
+    size_t count;       // Número de entradas atualmente
+} FileList;
+
 // Representa uma única entrada dentro de um diretório.
 typedef struct {
     char name[MAX_FILENAME_LEN]; // Nome do arquivo/subdiretório
     uint32_t inode_num;          // Número do i-node correspondente
 } DirectoryEntry;
+
+typedef struct {
+    uint32_t free_inodes;
+    uint32_t free_blocks;
+    uint32_t total_inodes;
+    uint32_t total_blocks;
+    uint32_t used_kb;
+    uint32_t total_kb;
+    uint32_t free_kb;
+    uint32_t used_blocks;
+    uint32_t used_inodes;
+} DiskUsageInfo;
 
 #endif // FS_TYPES_H

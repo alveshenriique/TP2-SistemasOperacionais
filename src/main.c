@@ -6,6 +6,7 @@
 #include "fs_core.h"
 #include "commands.h"
 #include "fs_types.h"
+#include "gui.h"
 
 #define DISK_PATH "meu_sistema.disk"
 
@@ -137,6 +138,19 @@ int main(int argc, char *argv[]) {
         fs_unmount();
         printf("Disco desmontado. Encerrando.\n");
 
+    } else if (strcmp(argv[1], "interface") == 0) {
+        if (fs_mount(DISK_PATH) != 0) {
+            uint32_t total_size = 2048;
+            uint32_t block_size = 1;
+            if (fs_format(DISK_PATH, total_size, block_size) != 0) {
+                fprintf(stderr, "ERRO FATAL: Falha ao formatar o disco.\n");
+                return 1;
+            }
+        }
+        printf("Disco '%s' montado com sucesso. Bem-vindo!\n", DISK_PATH);
+        create_interface(argc, argv);
+        fs_unmount();
+        printf("Disco desmontado. Encerrando.\n");
     } else {
         fprintf(stderr, "Comando desconhecido: %s\n", argv[1]);
         return 1;
